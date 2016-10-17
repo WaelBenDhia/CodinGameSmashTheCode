@@ -7,6 +7,18 @@ import java.math.*;
  * @author wael
  */
 
+/**
+ * Block class 
+ * Rotation 0:   A B
+ * 
+ *               B
+ * Rotation 1:   A
+ * 
+ * Rotation 2: B A
+ * 
+ * Rotation 3:   A
+ *               B
+ */
 class Block {
 
     public int colorA;
@@ -29,6 +41,271 @@ class Block {
     
     public void setRotation(int rot){
         rotation = rot;
+    }
+    
+    public Block[] getVariations(){
+        Block[] variations;
+        if(colorA == colorB)
+            variations = new Block[2];
+        else
+            variations = new Block[4];
+        for(int i=0; i<variations.length; i++){
+            variations[i] = new Block(colorA, colorB);
+            variations[i].setRotation(i);
+        }
+        return variations;
+    }
+}
+
+class GameState{
+    public static int ID_TRACKER;
+    
+    private int id;
+    private GameState[] childStates;
+    private GameState parent;
+    private GameState bestChild;
+    private int evaluation;
+    private boolean expanded;
+    
+    private Block[] nextBlocks;
+    private int nextBlocksInd;
+    private int[][] myGrid;
+    private int myScore;
+    private int myNuisancePoints;
+    private int[][] enemyGrid;
+    private int enemyScore;
+    private int enemyNuisancePoints;
+    private boolean myTurn;
+    
+    // GETTERS SETTERS CONSTRUCTORS
+    
+    public GameState(){
+        nextBlocks = new Block[8];
+        myGrid = new int[6][12];
+        myScore = 0;
+        enemyGrid = new int[6][12];
+        enemyScore = 0;
+        myTurn = true;
+        id = ID_TRACKER;
+        ID_TRACKER++;
+        evaluation = 0;
+        expanded = false;
+    }
+
+    public int getId() {
+        return id;
+    }
+    
+    // METHODS RELATED TO MIN MAX SEARCH
+    
+    public void expand(){
+        if(nextBlocks[nextBlocksInd] != null && getEvaluation()!= Integer.MAX_VALUE && getEvaluation()!= Integer.MIN_VALUE){
+            
+        }
+        Block[] variations = nextBlocks[nextBlocksInd].getVariations();
+        childStates = new GameState[(variations.length/2)*11];
+        for(Block b : variations){
+            
+        }
+    }
+    
+    public int getEvaluation(){
+        if(!expanded){
+            if(myScore == Integer.MIN_VALUE)
+                evaluation = myScore;
+            else if(enemyScore == Integer.MIN_VALUE)
+                evaluation = Integer.MAX_VALUE;
+            else
+                evaluation = myScore-enemyScore;
+        }
+        return evaluation;
+    }
+    
+    private void cascadeScoreUp(){
+        if(parent.bestChild == null){
+            //Cascade Score up
+            if( (parent.myTurn && parent.getEvaluation() < getEvaluation()) || (!parent.myTurn && parent.getEvaluation() > getEvaluation())){
+                parent.bestChild = this;
+                parent.evaluation = getEvaluation();
+            }
+            //Cull
+            else{
+                parent.childStates[ parent.childStates[0].id - id ] = null;
+            }
+        }
+    }
+    
+    // METHODS RELATED TO ACTUAL GAME SIMULATION
+    
+    public void dropBlockAt(Block block, int x) {
+        int[][] grid = myTurn ? myGrid : enemyGrid;
+        //There's space to drop this block here
+        if (block.getRotation() % 2 == 1 && grid[x][0] == -1 && grid[x][1] == -1) {
+            grid[x][0] = (block.getRotation() == 1) ? block.colorB : block.colorA;
+            grid[x][1] = (block.getRotation() == 1) ? block.colorA : block.colorB;
+        }
+        if (block.getRotation() % 2 == 0 && x < 5 && grid[0][x] == -1 && grid[0][x + 1] == -1) {
+            grid[x][0] = (block.getRotation() == 0) ? block.colorA : block.colorB;
+            grid[x+1][0] = (block.getRotation() == 0) ? block.colorB : block.colorA;
+        }else{
+            if(myTurn)
+                myScore = Integer.MIN_VALUE;
+            else
+                enemyScore = Integer.MIN_VALUE;
+        }
+        clearGroups();
+    }
+    
+    private void dropColumn(int x) {
+        int emptySpaces = 0;
+        int[][] grid = myTurn ? myGrid : enemyGrid;
+        for (int y = 11; y >= 0; y--) {
+            if (grid[x][y] == -1) {
+                emptySpaces++;
+            } else if (emptySpaces != 0) {
+                grid[x][y+emptySpaces] = grid[x][y];
+                grid[x][y] = -1;
+            }
+        }
+    }
+    
+    private void dropBalls(){
+        for( int i = 0; i<6; i++)
+            dropColumn(i);
+    }
+    
+    private int getAdjacents(int x, int y) {
+        if (y < 0 || y > 11 || x < 0 || x > 5) {
+            return 0;
+        }
+        int[][] grid = myTurn ? myGrid : enemyGrid;
+        if (grid[x][y] == -1 || grid[x][y] == 0)
+            return 0;
+        int originalColor = grid[x][y];
+        int res = 1;
+        grid[x][y] = -2;
+        if (x > 0 && (grid[x-1][y] == originalColor))
+            res += getAdjacents(x-1, y);
+        if (x < 5 && (grid[x+1][y] == originalColor))
+            res += getAdjacents(x+1, y);
+        if (y > 0 && (grid[x][y-1] == originalColor))
+            res += getAdjacents(x, y-1);
+        if (y < 11 && (grid[x][y+1] == originalColor))
+            res += getAdjacents(x, y+1);
+        grid[x][y] = originalColor;
+        return res;
+    }
+    
+    public void clearAdjacents(int x, int y) {
+        if (x < 0 || x > 5 || y < 0 || y > 11) {
+            return;
+        }
+        int[][] grid = myTurn ? myGrid : enemyGrid;
+        if (grid[x][y] == -1)
+            return;
+        int originalColor = grid[x][y];
+        grid[x][y] = -1;
+        if (originalColor == 0)
+            return;
+        if (x > 0 && (grid[x - 1][y] == originalColor || grid[x - 1][y] == 0))
+            clearAdjacents(x - 1, y);
+        if (x < 5 && (grid[x + 1][y] == originalColor || grid[x + 1][y] == 0))
+            clearAdjacents(x + 1, y);
+        if (y > 0 && (grid[x][y - 1] == originalColor || grid[x][y - 1] == 0))
+            clearAdjacents(x, y - 1);
+        if (y < 11 && (grid[x][y + 1] == originalColor || grid[x][y + 1] == 0))
+            clearAdjacents(x, y + 1);
+    }
+    
+    private void clearGroups() {
+        int[][] grid = myTurn ? myGrid : enemyGrid;
+        boolean cleared = true;
+        int B = 0;
+        int CP = 0;
+        int CB = 0;
+        int GB = 0;
+        boolean[] colorArray = new boolean[5];
+        while (cleared) {
+            cleared = false;
+            for (int y = 0; y < 12; y++) {
+                for (int x = 0; x < 6; x++) {
+                    int destroyed = getAdjacents(y, x);
+                    if (destroyed > 4) {
+                        int color = grid[x][y];
+                        B += destroyed;
+                        CP = CP == 0 ? 8 : CP*2;
+                        if(!colorArray[color-1]){
+                            colorArray[color-1] = true;
+                            CB = CB == 0 ? 2 : CB*2;
+                        }
+                        GB += (destroyed >= 11) ? 8 : destroyed - 4;
+                        clearAdjacents(x, y);
+                        cleared = true;
+                        break;
+                    }
+                }
+                if (cleared) {
+                    dropBalls();
+                    break;
+                }
+            }
+        }
+        int multiplier = CP + CB + GB;
+        multiplier = multiplier < 1 ? 1 : multiplier > 999 ? 999 : multiplier;
+        if(myTurn){
+            myScore += 10 * B * multiplier;
+            myNuisancePoints += (B * multiplier)/7;
+            if(myNuisancePoints >= 6)
+                dropNuisanceBlocks();
+        }else{
+            enemyScore += 10 * B * multiplier;
+            enemyNuisancePoints += (B * multiplier)/7;
+            if(enemyNuisancePoints >= 6)
+                dropNuisanceBlocks();
+        }
+    }
+    
+    private void dropNuisanceBlocks(){
+        int[][] grid = myTurn ? enemyGrid : myGrid;
+        int nuisanceLines;
+        if(myTurn){
+            nuisanceLines = myNuisancePoints / 6;
+            myNuisancePoints = myNuisancePoints % 6;
+        }else{
+            nuisanceLines = enemyNuisancePoints / 6;
+            myNuisancePoints = enemyNuisancePoints % 6;
+        }
+        for(int x = 0; x<6; x++){
+            for(int y = 0; y<nuisanceLines; y++){
+                if(grid[x][y] == -1){
+                    grid[x][y] = 0;
+                }else{
+                    if(myTurn)
+                        enemyScore = Integer.MIN_VALUE;
+                    else
+                        myScore = Integer.MIN_VALUE;
+                    return;
+                }
+            }
+        }
+        dropBalls();
+    }
+    
+    // OTHER METHODS
+    
+    @Override
+    public boolean equals(Object o){
+        if(o instanceof GameState){
+            return id == ((GameState)o).getId();
+        }
+        return false;
+    }
+
+    @Override
+    public int hashCode() {
+        int hash = 5;
+        hash = 29 * hash + this.id;
+        return hash;
     }
 }
 
